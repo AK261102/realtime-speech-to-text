@@ -2,13 +2,26 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL is not set. Copy .env.example to .env and fill it in.');
+// Accept the value with or without surrounding quotes (as copied from a .env file), but fail fast with a clear
+// message if it is not a postgres:// URL, instead of an obscure DNS error on first query.
+const connectionString = (process.env.DATABASE_URL ?? '').trim().replace(/^(['"])(.*)\1$/, '$2');
+let dbUrl = null;
+try {
+  dbUrl = new URL(connectionString);
+} catch {
+  /* handled below */
+}
+if (!dbUrl || !['postgres:', 'postgresql:'].includes(dbUrl.protocol) || !dbUrl.hostname) {
+  console.error(
+    connectionString
+      ? 'DATABASE_URL is not a valid PostgreSQL URL. Expected postgresql://user:password@host/database?sslmode=require'
+      : 'DATABASE_URL is not set. Copy .env.example to .env and fill it in.',
+  );
   process.exit(1);
 }
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
   max: 5,
   idleTimeoutMillis: 30_000,
 });
