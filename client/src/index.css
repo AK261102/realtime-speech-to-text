@@ -327,3 +327,123 @@ button:focus-visible {
     animation-duration: 2s;
   }
 }
+
+/* History dashboard */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+
+.empty {
+  padding: 32px 0;
+  text-align: center;
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.history-item {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+}
+
+.history-meta h3 {
+  font-size: 0.98rem;
+  margin-right: 4px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.badge.live {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.history-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editor {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+
+.editor input,
+.editor select,
+.editor textarea {
+  background: var(--surface);
+}
+
+.editor-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 600px) {
+  .editor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    max-width: none;
+  }
+
+  .field.inline {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+.toolbar input {
+  min-width: 0;
+}

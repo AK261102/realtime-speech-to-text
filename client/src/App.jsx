@@ -1,6 +1,11 @@
+import { useState } from 'react';
 import LiveTranscriber from './components/LiveTranscriber.jsx';
+import HistoryDashboard from './components/HistoryDashboard.jsx';
 
 export default function App() {
+  // Bumped whenever a live recording is saved so the history list reloads.
+  const [refreshKey, setRefreshKey] = useState(0);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -14,7 +19,8 @@ export default function App() {
       </header>
 
       <main>
-        <LiveTranscriber />
+        <LiveTranscriber onSaved={() => setRefreshKey((k) => k + 1)} />
+        <HistoryDashboard refreshKey={refreshKey} />
       </main>
     </div>
   );
