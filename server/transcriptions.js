@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from './db.js';
 
-export const LANGUAGES = ['auto', 'hi-IN', 'en-IN', 'en-US'];
+export const LANGUAGES = ['auto', 'hi-en', 'hi-IN', 'en-IN'];
 const SOURCES = ['live', 'manual'];
 const MAX_TEXT = 20_000;
 const MAX_TITLE = 200;

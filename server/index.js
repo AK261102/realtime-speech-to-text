@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { initDb, pool } from './db.js';
 import { router as transcriptionsRouter } from './transcriptions.js';
+import { attachLiveTranscription } from './live.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -38,6 +39,7 @@ app.use((err, _req, res, _next) => {
 });
 
 const server = http.createServer(app);
+attachLiveTranscription(server);
 
 await initDb();
 server.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
