@@ -43,3 +43,11 @@ attachLiveTranscription(server);
 
 await initDb();
 server.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
+
+// Graceful shutdown (e.g. on redeploys): stop accepting connections, then close the DB pool.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    server.close(() => pool.end().finally(() => process.exit(0)));
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}
