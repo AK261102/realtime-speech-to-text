@@ -2,7 +2,7 @@
 
 A web application that transcribes speech **in real time**, including speech that mixes **Hindi and English** (Hinglish) in the same sentence. Every transcription is stored in **PostgreSQL** and shown in a history dashboard with full **CRUD** (create, read, update, delete).
 
-**Live demo:** _coming soon_
+**Live demo:** https://realtime-speech-to-text-s5fj.onrender.com (free tier: the first load can take ~30–50 s while the instance wakes up; use Chrome or Edge and allow microphone access)
 
 ## Features
 
