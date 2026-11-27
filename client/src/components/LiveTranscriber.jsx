@@ -1,31 +1,47 @@
 import { useEffect, useRef, useState } from 'react';
 import { startMicrophone } from '../lib/microphone.js';
-import { LANGUAGE_OPTIONS, liveSocketUrl } from '../lib/api.js';
+import { LANGUAGE_OPTIONS, languageLabel, liveSocketUrl } from '../lib/api.js';
+import { ActivityIcon, AlertIcon, CheckIcon, CpuIcon, MicIcon, StopIcon, WaveIcon } from './Icons.jsx';
 
 const MAX_SECONDS = 9 * 60 + 30; // upstream live sessions are limited to 10 minutes
+const BARS = 48;
+const SILENT_WAVE = Array(BARS).fill(0);
 
 const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+const countWords = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
-export default function LiveTranscriber({ onSaved }) {
+const STATUS_TEXT = {
+  idle: 'Ready to record',
+  connecting: 'Connecting to speech service…',
+  listening: 'Listening',
+  finishing: 'Finalizing transcript…',
+};
+
+export default function LiveTranscriber({ onSaved, speechReady }) {
   const [language, setLanguage] = useState('hi-en');
   const [status, setStatus] = useState('idle'); // idle | connecting | listening | finishing
-  const [segments, setSegments] = useState([]);
+  const [segments, setSegments] = useState([]); // [{ t: seconds, text }]
   const [interim, setInterim] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [seconds, setSeconds] = useState(0);
-  const [level, setLevel] = useState(0);
+  const [wave, setWave] = useState(SILENT_WAVE);
+  const [firstTextMs, setFirstTextMs] = useState(null);
+  const [savedId, setSavedId] = useState(null);
 
   const socketRef = useRef(null);
   const stopMicRef = useRef(null);
   const timerRef = useRef(null);
-  const transcriptRef = useRef(null);
+  const consoleRef = useRef(null);
+  const secondsRef = useRef(0);
+  const startedAtRef = useRef(0);
+  const interimRef = useRef('');
 
   const active = status !== 'idle';
 
   // Keep the newest words in view while speaking.
   useEffect(() => {
-    const el = transcriptRef.current;
+    const el = consoleRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [segments, interim]);
 
@@ -46,7 +62,7 @@ export default function LiveTranscriber({ onSaved }) {
     clearInterval(timerRef.current);
     stopMicRef.current?.();
     stopMicRef.current = null;
-    setLevel(0);
+    setWave(SILENT_WAVE);
   }
 
   async function start() {
@@ -54,7 +70,12 @@ export default function LiveTranscriber({ onSaved }) {
     setNotice('');
     setSegments([]);
     setInterim('');
+    interimRef.current = '';
     setSeconds(0);
+    setFirstTextMs(null);
+    setSavedId(null);
+    secondsRef.current = 0;
+    startedAtRef.current = performance.now();
     setStatus('connecting');
 
     const socket = new WebSocket(liveSocketUrl(language));
@@ -62,6 +83,13 @@ export default function LiveTranscriber({ onSaved }) {
     socketRef.current = socket;
     const queued = []; // audio captured before the socket finished opening
     let saved = false;
+    let gotText = false;
+
+    const markFirstText = () => {
+      if (gotText) return;
+      gotText = true;
+      setFirstTextMs(Math.round(performance.now() - startedAtRef.current));
+    };
 
     socket.onopen = () => {
       queued.forEach((chunk) => socket.send(chunk));
@@ -74,22 +102,29 @@ export default function LiveTranscriber({ onSaved }) {
           setStatus((s) => (s === 'connecting' ? 'listening' : s));
           break;
         case 'interim':
+          markFirstText();
+          interimRef.current = msg.text;
           setInterim(msg.text);
           break;
         case 'final':
+          markFirstText();
+          interimRef.current = '';
           setInterim('');
-          setSegments((prev) => [...prev, msg.text]);
+          setSegments((prev) => [...prev, { t: secondsRef.current, text: msg.text }]);
           break;
         case 'saved':
           saved = true;
           if (msg.record) {
-            // Show exactly what was stored (includes any last words that were still interim).
-            setSegments([msg.record.text]);
+            // Keep any last words that were still interim (the server saved them too).
+            const pending = interimRef.current;
+            interimRef.current = '';
             setInterim('');
-            setNotice('Saved to history.');
+            if (pending) setSegments((prev) => [...prev, { t: secondsRef.current, text: pending }]);
+            setSavedId(msg.record.id);
+            setNotice(`Saved to history as #${msg.record.id}.`);
             onSaved?.(msg.record);
           } else {
-            setNotice('No speech detected, nothing was saved.');
+            setNotice('No speech detected, so nothing was saved.');
           }
           break;
         case 'error':
@@ -110,7 +145,7 @@ export default function LiveTranscriber({ onSaved }) {
           if (socket.readyState === WebSocket.OPEN) socket.send(chunk);
           else if (socket.readyState === WebSocket.CONNECTING) queued.push(chunk);
         },
-        onLevel: setLevel,
+        onLevel: (level) => setWave((prev) => [...prev.slice(1), Math.min(1, level * 9)]),
       });
     } catch (err) {
       setError(
@@ -121,7 +156,10 @@ export default function LiveTranscriber({ onSaved }) {
       socket.close();
       return;
     }
-    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    timerRef.current = setInterval(() => {
+      secondsRef.current += 1;
+      setSeconds(secondsRef.current);
+    }, 1000);
   }
 
   function stop() {
@@ -132,82 +170,193 @@ export default function LiveTranscriber({ onSaved }) {
     else socket?.close();
   }
 
+  const fullText = [...segments.map((s) => s.text), interim].join(' ');
+  const words = countWords(fullText);
   const hasText = segments.length > 0 || interim;
+  const disabled = speechReady === false;
 
   return (
-    <section className="card live">
-      <div className="card-head">
-        <div>
-          <h2>Live transcription</h2>
-          <p className="muted">Speak in Hindi, English or a mix of both. Words appear as you talk.</p>
-        </div>
-        <label className="field inline">
-          <span>Language</span>
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={active}>
+    <div className="workspace">
+      <section className="card" aria-labelledby="live-title">
+        <div className="card-head">
+          <div className="card-title">
+            <span className="icon-badge">
+              <WaveIcon />
+            </span>
+            <div>
+              <h2 id="live-title">Live transcription</h2>
+              <div className="sub">Streaming recognition with partial results</div>
+            </div>
+          </div>
+          <div className="segmented" role="group" aria-label="Recognition language">
             {LANGUAGE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={language === o.value}
+                onClick={() => setLanguage(o.value)}
+                disabled={active}
+                title={o.label}
+              >
+                {o.short}
+              </button>
             ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="recorder">
-        <button
-          type="button"
-          className={`mic ${status}`}
-          onClick={status === 'idle' ? start : stop}
-          disabled={status === 'finishing'}
-          aria-label={status === 'idle' ? 'Start recording' : 'Stop recording'}
-          style={{ '--level': Math.min(1, level * 8) }}
-        >
-          {status === 'idle' ? <MicIcon /> : status === 'finishing' ? <Spinner /> : <StopIcon />}
-        </button>
-        <div className="recorder-status">
-          <strong>
-            {
-              {
-                idle: 'Tap the microphone to start',
-                connecting: 'Connecting…',
-                listening: 'Listening',
-                finishing: 'Finishing up…',
-              }[status]
-            }
-          </strong>
-          <span className="muted mono">
-            {active ? `${formatTime(seconds)} / ${formatTime(MAX_SECONDS)}` : 'Up to 9½ minutes per recording'}
-          </span>
+          </div>
         </div>
-      </div>
 
-      <div className="transcript" ref={transcriptRef} aria-live="polite">
-        {hasText ? (
-          <p>
-            {segments.join(' ')} {interim && <span className="interim">{interim}</span>}
-          </p>
-        ) : (
-          <p className="placeholder">{active ? 'Start speaking…' : 'Your transcript will appear here.'}</p>
-        )}
-      </div>
+        <div className="card-body">
+          <div className="recorder">
+            <button
+              type="button"
+              className={`mic ${status}`}
+              onClick={status === 'idle' ? start : stop}
+              disabled={status === 'finishing' || (status === 'idle' && disabled)}
+              aria-label={status === 'idle' ? 'Start recording' : 'Stop recording'}
+            >
+              {status === 'idle' ? <MicIcon size={30} /> : status === 'finishing' ? <span className="spinner" /> : <StopIcon />}
+            </button>
+            <div className="recorder-info">
+              <div className="recorder-state">
+                {status === 'listening' && <span className="dot live" />}
+                <strong>{disabled && status === 'idle' ? 'Speech service unavailable' : STATUS_TEXT[status]}</strong>
+                <span className="timer">
+                  {formatTime(seconds)} / {formatTime(MAX_SECONDS)}
+                </span>
+              </div>
+              <div className={`wave ${status === 'listening' ? 'active' : ''}`} aria-hidden="true">
+                {wave.map((v, i) => (
+                  <span key={i} style={{ height: `${Math.max(8, v * 100)}%` }} />
+                ))}
+              </div>
+            </div>
+          </div>
 
-      {error && <p className="alert error">{error}</p>}
-      {notice && !error && <p className="alert success">{notice}</p>}
-    </section>
+          <div className="console">
+            <div className="console-bar">
+              <div className="console-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </div>
+              <span>transcript · {languageLabel(language).toLowerCase()}</span>
+              <span>{segments.length} seg</span>
+            </div>
+            <div className="console-body" ref={consoleRef} aria-live="polite">
+              {hasText ? (
+                <>
+                  {segments.map((s, i) => (
+                    <div className="line" key={i}>
+                      <time>[{formatTime(s.t)}]</time>
+                      <p>{s.text}</p>
+                    </div>
+                  ))}
+                  {(interim || status === 'listening') && (
+                    <div className="line interim">
+                      <time>[{formatTime(seconds)}]</time>
+                      <p>
+                        {interim}
+                        <span className="caret" />
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="console-empty">
+                  {active ? (
+                    <>
+                      <b>$</b> waiting for speech… start talking
+                      <span className="caret" />
+                    </>
+                  ) : (
+                    <>
+                      <b>$</b> press the microphone and speak, e.g. “आज मेरी meeting है at 5 PM”
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <p className="alert error" role="alert">
+              <AlertIcon /> {error}
+            </p>
+          )}
+          {notice && !error && (
+            <p className="alert success">
+              <CheckIcon /> {notice}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <aside className="side">
+        <section className="card" aria-labelledby="metrics-title">
+          <div className="card-head">
+            <div className="card-title">
+              <span className="icon-badge">
+                <ActivityIcon />
+              </span>
+              <h2 id="metrics-title">Session metrics</h2>
+            </div>
+          </div>
+          <div className="metrics">
+            <Metric label="Duration" value={formatTime(seconds)} />
+            <Metric label="Words" value={words} />
+            <Metric label="Segments" value={segments.length} />
+            <Metric
+              label="First text"
+              value={firstTextMs == null ? '—' : (firstTextMs / 1000).toFixed(2)}
+              unit={firstTextMs == null ? '' : 's'}
+            />
+          </div>
+          <div className="metrics-foot">
+            <span>Last saved</span>
+            <span className="mono">{savedId ? `#${savedId}` : '—'}</span>
+          </div>
+        </section>
+
+        <section className="card" aria-labelledby="pipeline-title">
+          <div className="card-head">
+            <div className="card-title">
+              <span className="icon-badge">
+                <CpuIcon />
+              </span>
+              <h2 id="pipeline-title">Pipeline</h2>
+            </div>
+          </div>
+          <ol className="pipeline">
+            <Step n="01" title="Microphone capture" detail="AudioWorklet · 16 kHz PCM16" />
+            <Step n="02" title="Stream to server" detail="WebSocket · 100 ms frames" />
+            <Step n="03" title="Speech recognition" detail="Gemini Live · interim + final" />
+            <Step n="04" title="Persist" detail="PostgreSQL · transcriptions" />
+          </ol>
+        </section>
+      </aside>
+    </div>
   );
 }
 
-const MicIcon = () => (
-  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="9" y="2" width="6" height="12" rx="3" />
-    <path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8" />
-  </svg>
-);
+function Metric({ label, value, unit }) {
+  return (
+    <div className="metric">
+      <span className="eyebrow">{label}</span>
+      <span className="metric-value">
+        {value}
+        {unit && <small>{unit}</small>}
+      </span>
+    </div>
+  );
+}
 
-const StopIcon = () => (
-  <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
-    <rect x="6" y="6" width="12" height="12" rx="2" />
-  </svg>
-);
-
-const Spinner = () => <span className="spinner" aria-hidden="true" />;
+function Step({ n, title, detail }) {
+  return (
+    <li>
+      <span className="step-num">{n}</span>
+      <div>
+        <strong>{title}</strong>
+        <span>{detail}</span>
+      </div>
+    </li>
+  );
+}

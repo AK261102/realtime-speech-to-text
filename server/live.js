@@ -53,6 +53,11 @@ function getClient() {
 
 let activeSessions = 0;
 
+/** Public, non-secret info about the speech backend (shown in the UI status bar). */
+export function speechServiceInfo() {
+  return { model: MODEL, configured: API_KEY_VALID };
+}
+
 export function attachLiveTranscription(server) {
   const wss = new WebSocketServer({ server, path: '/ws/transcribe', maxPayload: 256 * 1024 });
   wss.on('connection', (ws, req) => handleConnection(ws, req));

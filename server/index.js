@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { initDb, pool } from './db.js';
 import { router as transcriptionsRouter } from './transcriptions.js';
-import { attachLiveTranscription } from './live.js';
+import { attachLiveTranscription, speechServiceInfo } from './live.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,7 +17,7 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', async (_req, res) => {
   await pool.query('SELECT 1');
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', database: 'ok', speech: speechServiceInfo() });
 });
 
 app.use('/api/transcriptions', transcriptionsRouter);

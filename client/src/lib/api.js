@@ -10,6 +10,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  health: () => request('/health'),
   list: ({ search = '', limit = 10, offset = 0 } = {}) =>
     request(`/transcriptions?${new URLSearchParams({ search, limit, offset })}`),
   create: (data) => request('/transcriptions', { method: 'POST', body: JSON.stringify(data) }),
@@ -18,10 +19,10 @@ export const api = {
 };
 
 export const LANGUAGE_OPTIONS = [
-  { value: 'auto', label: 'Auto detect (any language)' },
-  { value: 'hi-en', label: 'Hindi + English (Hinglish)' },
-  { value: 'hi-IN', label: 'Hindi' },
-  { value: 'en-IN', label: 'English' },
+  { value: 'hi-en', label: 'Hindi + English (Hinglish)', short: 'Hinglish' },
+  { value: 'auto', label: 'Auto detect (any language)', short: 'Auto' },
+  { value: 'hi-IN', label: 'Hindi', short: 'Hindi' },
+  { value: 'en-IN', label: 'English', short: 'English' },
 ];
 
 export const languageLabel = (value) => LANGUAGE_OPTIONS.find((o) => o.value === value)?.label ?? value;
