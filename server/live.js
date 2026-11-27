@@ -36,10 +36,18 @@ const LANGUAGE_HINTS = {
   'en-IN': ['en-IN'],
 };
 
+// API keys are a single token (e.g. "AIza…" or "AQ.…"). Anything else is a misconfiguration, such as another
+// secret pasted into the wrong variable, and must never be sent to the upstream API.
+const API_KEY = (process.env.GEMINI_API_KEY ?? '').trim().replace(/^(['"])(.*)\1$/, '$2');
+const API_KEY_VALID = /^[A-Za-z0-9._-]{20,200}$/.test(API_KEY);
+if (API_KEY && !API_KEY_VALID) {
+  console.error('GEMINI_API_KEY does not look like a Gemini API key. Live transcription is disabled until it is fixed.');
+}
+
 let ai = null;
 function getClient() {
-  if (!process.env.GEMINI_API_KEY) return null;
-  ai ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: 'v1beta' } });
+  if (!API_KEY_VALID) return null;
+  ai ??= new GoogleGenAI({ apiKey: API_KEY, httpOptions: { apiVersion: 'v1beta' } });
   return ai;
 }
 
@@ -62,7 +70,7 @@ function handleConnection(ws, req) {
   if (!(language in LANGUAGE_HINTS)) return fail(`Unsupported language "${language}"`);
 
   const client = getClient();
-  if (!client) return fail('Speech service is not configured (GEMINI_API_KEY missing).');
+  if (!client) return fail('Speech service is not configured on the server.');
   if (activeSessions >= MAX_CONCURRENT_SESSIONS) return fail('Server is busy, please try again in a minute.');
   activeSessions++;
 
@@ -125,7 +133,8 @@ function handleConnection(ws, req) {
         onclose: (e) => {
           if (!finished && !stopping) {
             console.warn('Gemini live session closed unexpectedly:', e?.code, e?.reason);
-            send({ type: 'error', message: e?.reason ? `Speech service closed: ${e.reason}` : 'Speech service disconnected.' });
+            // Upstream close reasons can echo request details, so they are logged but never sent to the browser.
+            send({ type: 'error', message: 'Speech service disconnected. Please try again.' });
           }
           finish();
         },
